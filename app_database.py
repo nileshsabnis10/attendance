@@ -1,11 +1,11 @@
 # SGU Monthly Attendance — Supabase Database Version (with Electives & Course Reports)
 # Requires: streamlit, supabase, pandas, xlsxwriter, plotly
 # -----------------------------------------------------------------------------
-# Patched: Restored all admin tabs and all other features. This is the complete version.
+# Patched: Restored full functionality to all Admin tabs and the main Reports tab.
 # Timestamp: 2025-09-11
-# Filename: app_patched_2025-09-11_v6.4.py
+# Filename: app_patched_2025-09-11_v6.6.py
 # -----------------------------------------------------------------------------
-# Version: 6.4
+# Version: 6.6
 # -----------------------------------------------------------------------------
 
 import io
@@ -17,9 +17,9 @@ from supabase import create_client, Client
 
 # ───────────────────────── App meta ─────────────────────────
 st.set_page_config(page_title="SGU Attendance (DB)", page_icon="📚", layout="wide")
-APP_TITLE = "SGU Monthly Attendance"
-APP_SUBTITLE = "Creative Minds"
-__version__ = "6.4"
+APP_TITLE = "SGU Monthly Attendance (Database Version)"
+APP_SUBTITLE = "Backend powered by Supabase & PostgreSQL"
+__version__ = "6.6"
 
 CLASS_CHOICES = ["First Year", "Second Year", "Third Year", "Fourth Year"]
 month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
@@ -520,8 +520,57 @@ with tab_admin:
 
 with tab_reports:
     st.header("📊 Class Analytics")
-    # ... (Full logic for this tab) ...
+    if is_admin or identity:
+        config = st.session_state.get('class_config')
+        if not config: st.info("Select a class at the top to view reports.")
+        else:
+            st.markdown("### Course Performance")
+            rep_month_course = st.selectbox("Select Month", month_names, index=datetime.now().month-1, key="course_month_select")
+            mk_course = month_key(rep_month_course)
+            try:
+                response = supabase.rpc('get_course_wise_summary', {'p_department_id': config['department_id'], 'p_class_name': config['class_name'], 'p_section': config['section'], 'p_month_key': mk_course}).execute()
+                course_summary_df = pd.DataFrame(response.data)
+                if course_summary_df.empty: 
+                    st.warning(f"No attendance data for {rep_month_course} to generate course report.")
+                else:
+                    course_summary_df['average_attendance'] = pd.to_numeric(course_summary_df['average_attendance'])
+                    fig = px.bar(course_summary_df, x='course_name', y='average_attendance', title=f"Average Attendance per Course for {rep_month_course}", labels={'course_name': 'Course', 'average_attendance': 'Average Attendance (%)'}, text='average_attendance')
+                    fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside'); fig.update_layout(yaxis_range=[0,100])
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e: st.error(f"Error generating course report: {e}")
+            st.divider()
+            st.markdown("### Student Performance")
+            try:
+                response = supabase.rpc('get_full_class_history', {'p_department_id': config['department_id'], 'p_class_name': config['class_name'], 'p_section': config['section']}).execute()
+                history_df = pd.DataFrame(response.data)
+                if history_df.empty: 
+                    st.warning("No attendance history found for this class.")
+                else:
+                    history_df['attendance_percent'] = pd.to_numeric(history_df['attendance_percent'])
+                    st.markdown("#### Student Attendance Trend Over Time")
+                    student_list = sorted(history_df['name'].unique())
+                    selected_students = st.multiselect("Select students to compare:", student_list, default=student_list[:3] if len(student_list) > 0 else None)
+                    if selected_students:
+                        trend_df = history_df[history_df['name'].isin(selected_students)]
+                        fig_trend = px.line(trend_df, x='month_yyyy_mm', y='attendance_percent', color='name', markers=True, title="Monthly Attendance Percentage per Student", labels={'month_yyyy_mm': 'Month', 'attendance_percent': 'Attendance %', 'name': 'Student Name'})
+                        fig_trend.update_layout(xaxis_title="Month", yaxis_title="Attendance %")
+                        st.plotly_chart(fig_trend, use_container_width=True)
+                    st.divider()
+                    st.markdown("#### Class Performance Distribution")
+                    month_list = sorted(history_df['month_yyyy_mm'].unique())
+                    sel_month_dist = st.selectbox("Select Month for Distribution Analysis:", month_list, index=len(month_list)-1 if month_list else 0)
+                    if sel_month_dist:
+                        month_df = history_df[history_df['month_yyyy_mm'] == sel_month_dist]
+                        bins = [0, 50, 75, 101]; labels = ['Below 50% (High Risk)', '50% - 75% (At Risk)', 'Above 75% (Good Standing)']
+                        month_df['performance_category'] = pd.cut(month_df['attendance_percent'], bins=bins, labels=labels, right=False)
+                        performance_counts = month_df['performance_category'].value_counts().reset_index()
+                        performance_counts.columns = ['performance_category', 'count']
+                        fig_pie = px.pie(performance_counts, names='performance_category', values='count', title=f"Student Attendance Distribution for {sel_month_dist}", color='performance_category', color_discrete_map={'Below 50% (High Risk)': '#EF4444', '50% - 75% (At Risk)': '#F59E0B', 'Above 75% (Good Standing)': '#10B981'})
+                        st.plotly_chart(fig_pie, use_container_width=True)
+            except Exception as e: st.error(f"An error occurred while generating student analytics: {e}")
+    else:
+        st.info("Please log in to view reports.")
 
 # Footer
 st.divider()
-st.caption(f"© SGU Attendance System — Nilesh Vijay Sabnis (v{1.1})")
+st.caption(f"© SGU Attendance System — Nilesh Vijay Sabnis (v{__version__})")
