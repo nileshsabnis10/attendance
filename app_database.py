@@ -18,7 +18,7 @@ from supabase import create_client, Client
 # ───────────────────────── App meta ─────────────────────────
 st.set_page_config(page_title="SGU Attendance (DB)", page_icon="📚", layout="wide")
 APP_TITLE = "SGU Monthly Attendance"
-APP_SUBTITLE = "Creatice Minds"
+APP_SUBTITLE = "Creative Minds"
 __version__ = "6.3"
 
 CLASS_CHOICES = ["First Year", "Second Year", "Third Year", "Fourth Year"]
@@ -514,3 +514,4 @@ with tab_reports:
 st.divider()
 
 st.caption(f"© SGU Attendance System — Nilesh Vijay Sabnis (v{1.1})")
+
