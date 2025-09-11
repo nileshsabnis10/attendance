@@ -1,11 +1,11 @@
 # SGU Monthly Attendance — Supabase Database Version (with Electives & Course Reports)
 # Requires: streamlit, supabase, pandas, xlsxwriter, plotly
 # -----------------------------------------------------------------------------
-# Patched: Restored all Admin Tabs and added Faculty Enrollment feature.
+# Patched: Restored all admin tabs and all other features. This is the complete version.
 # Timestamp: 2025-09-11
-# Filename: app_patched_2025-09-11_v6.3.py
+# Filename: app_patched_2025-09-11_v6.4.py
 # -----------------------------------------------------------------------------
-# Version: 6.3
+# Version: 6.4
 # -----------------------------------------------------------------------------
 
 import io
@@ -19,7 +19,7 @@ from supabase import create_client, Client
 st.set_page_config(page_title="SGU Attendance (DB)", page_icon="📚", layout="wide")
 APP_TITLE = "SGU Monthly Attendance"
 APP_SUBTITLE = "Creative Minds"
-__version__ = "6.3"
+__version__ = "6.4"
 
 CLASS_CHOICES = ["First Year", "Second Year", "Third Year", "Fourth Year"]
 month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
@@ -249,8 +249,6 @@ with tab_entry:
                 st.session_state.faculty_course_selection = None; st.rerun()
             roster_df = load_roster(course['department_id'], course['class_name'], course['section'])
             if not roster_df.empty:
-                
-                # NEW: Faculty Enrollment Management
                 with st.expander("🪢 Manage Enrollment for this Course"):
                     st.write("Select the students enrolled in this elective. If no students are selected, it's treated as a core subject for all.")
                     enrolled_ids = get_enrolled_students(course)
@@ -264,10 +262,9 @@ with tab_entry:
                                 supabase.table('student_course_enrollment').insert(records).execute()
                             st.success("Enrollment updated successfully!"); get_enrolled_students.clear(); st.rerun()
                         except Exception as e: st.error(f"Error updating enrollment: {e}")
-
+                
                 enrolled_ids = get_enrolled_students(course)
                 students_to_show = roster_df[roster_df['student_id'].isin(enrolled_ids)].copy() if enrolled_ids else roster_df.copy()
-                
                 if not students_to_show.empty:
                     c1, c2 = st.columns(2)
                     month_name = c1.selectbox("Month", month_names, index=datetime.now().month - 1)
@@ -494,17 +491,32 @@ with tab_admin:
         
         with tab_danger:
             st.markdown("### ⚠️ Danger Zone")
-            with st.expander("Show Irreversible Actions"):
-                if not DANGER_ZONE_PASSWORD: st.error("Danger Zone password not set in secrets.")
+            with st.expander("Show Irreversible Actions", expanded=True):
+                if not DANGER_ZONE_PASSWORD:
+                    st.error("Danger Zone password not set in secrets. This section is disabled.")
                 else:
                     if not is_danger_unlocked():
-                        dz_pw = st.text_input("Enter Danger Zone Password", type="password")
-                        if st.button("🔓 Unlock", type="primary"):
+                        st.info("This area contains actions that permanently delete data. Enter the password to proceed.")
+                        dz_pw = st.text_input("Enter Danger Zone Password", type="password", key="dz_pw")
+                        if st.button("🔓 Unlock Danger Zone", type="primary"):
                             if try_unlock_danger_zone(dz_pw): st.rerun()
                             else: st.error("Incorrect password.")
                     else:
-                        st.success("Danger Zone is UNLOCKED."); st.button("🔒 Lock", on_click=lock_danger_zone)
-                        st.error("These actions permanently delete data.")
+                        st.success("Danger Zone is UNLOCKED.")
+                        if st.button("🔒 Lock Danger Zone"): lock_danger_zone(); st.rerun()
+                        st.error("The following actions are permanent and cannot be undone.", icon="🚨")
+                        st.markdown("##### Reset Students Table")
+                        if st.button("Permanently Delete All Students", type="primary", disabled=not is_danger_unlocked()):
+                            try: supabase.table('students').delete().neq('student_id', 'DO_NOT_DELETE').execute(); st.success("All student records deleted."); load_roster.clear(); st.rerun()
+                            except Exception as e: st.error(f"Error: {e}")
+                        st.markdown("##### Reset Faculty Table")
+                        if st.button("Permanently Delete All Faculty", type="primary", disabled=not is_danger_unlocked()):
+                            try: supabase.table('faculty').delete().neq('faculty_id', 'DO_NOT_DELETE').execute(); st.success("All faculty records deleted."); st.rerun()
+                            except Exception as e: st.error(f"Error: {e}")
+                        st.markdown("##### Reset Courses Table")
+                        if st.button("Permanently Delete All Courses", type="primary", disabled=not is_danger_unlocked()):
+                            try: supabase.table('courses').delete().neq('course_code', 'DO_NOT_DELETE').execute(); st.success("All course records deleted."); get_courses.clear(); st.rerun()
+                            except Exception as e: st.error(f"Error: {e}")
 
 with tab_reports:
     st.header("📊 Class Analytics")
@@ -512,6 +524,4 @@ with tab_reports:
 
 # Footer
 st.divider()
-
 st.caption(f"© SGU Attendance System — Nilesh Vijay Sabnis (v{1.1})")
-
