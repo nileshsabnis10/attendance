@@ -600,3 +600,7 @@ with tab_admin:
                                 log_action(st.session_state.get("admin_user"), "DANGER_ZONE_DELETE", {'table': 'courses'})
                                 st.toast("All course records deleted.", icon="🚨"); get_courses.clear(); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
+
+# Footer
+st.divider()
+st.caption(f"© SGU Attendance System — Nilesh Vijay Sabnis (v{__version__})")
