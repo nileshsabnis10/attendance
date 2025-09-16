@@ -1,11 +1,11 @@
 # SGU Monthly Attendance — Supabase Database Version (with Electives & Course Reports)
 # Requires: streamlit, supabase, pandas, xlsxwriter, plotly
 # -----------------------------------------------------------------------------
-# Patched: Restored full functionality to all Admin tabs and the main Reports tab.
-# Timestamp: 2025-09-11
-# Filename: app_patched_2025-09-11_v6.6.py
+# Patched: Implemented faculty login using the last 4 digits of their phone number.
+# Timestamp: 2025-09-16
+# Filename: app_patched_2025-09-16_v6.7.py
 # -----------------------------------------------------------------------------
-# Version: 6.6
+# Version: 6.7
 # -----------------------------------------------------------------------------
 
 import io
@@ -19,7 +19,7 @@ from supabase import create_client, Client
 st.set_page_config(page_title="SGU Attendance (DB)", page_icon="📚", layout="wide")
 APP_TITLE = "SGU Monthly Attendance"
 APP_SUBTITLE = "Creative Minds"
-__version__ = "6.6"
+__version__ = "6.7"
 
 CLASS_CHOICES = ["First Year", "Second Year", "Third Year", "Fourth Year"]
 month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
@@ -95,13 +95,27 @@ def get_enrolled_students(course: dict) -> list:
 
 @st.cache_data(show_spinner="Authenticating faculty...")
 def authenticate_faculty(faculty_id: str, pin: str):
-    if not faculty_id or not pin: return None
-    try:
-        response = supabase.table('faculty').select('*').eq('faculty_id', faculty_id).single().execute()
-        user_data = response.data
-        if user_data and user_data.get("pin") == pin: return {"FacultyID": user_data["faculty_id"], "Name": user_data["name"], "Email": user_data.get("email")}
+    # Basic validation for a 4-digit PIN
+    if not faculty_id or not pin or not pin.isdigit() or len(pin) != 4:
         return None
-    except Exception: return None
+    try:
+        # Fetch the faculty record, including the new 'phone_number' field
+        response = supabase.table('faculty').select('faculty_id, name, email, phone_number').eq('faculty_id', faculty_id).single().execute()
+        user_data = response.data
+        
+        # Check if user exists and has a phone number
+        if user_data and user_data.get("phone_number"):
+            phone = str(user_data["phone_number"])
+            # Compare the provided PIN with the last 4 digits of the phone number
+            if len(phone) >= 4 and phone[-4:] == pin:
+                return {
+                    "FacultyID": user_data["faculty_id"], 
+                    "Name": user_data["name"], 
+                    "Email": user_data.get("email")
+                }
+        return None
+    except Exception:
+        return None
 
 @st.cache_data(show_spinner="Fetching faculty dashboard data...")
 def get_all_assigned_courses_for_faculty(faculty_id: str) -> pd.DataFrame:
@@ -186,7 +200,7 @@ if not st.session_state.get("IDENTITY") or is_admin:
 st.markdown("### Faculty Login")
 c1, c2, c3 = st.columns([1, 1, 1])
 fac_id = c1.text_input("Faculty ID")
-fac_pin = c2.text_input("PIN", type="password")
+fac_pin = c2.text_input("PIN (Last 4 of Phone)", type="password", max_chars=4)
 with c3:
     st.write(" ")
     if st.button("Login Faculty", use_container_width=True):
@@ -394,7 +408,7 @@ with tab_admin:
                     st.markdown("###### Download CSV Templates")
                     c1, c2, c3 = st.columns(3); 
                     c1.download_button("⬇️ Students", pd.DataFrame({'student_id':['S001'],'PRN':['1'],'name':['John Doe']}).to_csv(index=False).encode(), 'students_template.csv', use_container_width=True)
-                    c2.download_button("⬇️ Faculty", pd.DataFrame({'faculty_id':['F001'],'name':['Dr. Alan Turing'],'pin':['1234']}).to_csv(index=False).encode(), 'faculty_template.csv', use_container_width=True)
+                    c2.download_button("⬇️ Faculty", pd.DataFrame({'faculty_id':['F001'],'name':['Dr. Alan Turing'],'phone_number':['9876543210']}).to_csv(index=False).encode(), 'faculty_template.csv', use_container_width=True)
                     c3.download_button("⬇️ Courses", pd.DataFrame({'course_code':['CS101'],'course_name':['Intro to Code'],'assigned_faculty_id':['F001']}).to_csv(index=False).encode(), 'courses_template.csv', use_container_width=True)
                 with sub_tab2:
                     st.info(f"New records will be added to: **{config['department_name']} / {config['class_name']} / {config['section']}**")
@@ -574,4 +588,3 @@ with tab_reports:
 # Footer
 st.divider()
 st.caption(f"© SGU Attendance System — Nilesh Vijay Sabnis (v{__version__})")
-
